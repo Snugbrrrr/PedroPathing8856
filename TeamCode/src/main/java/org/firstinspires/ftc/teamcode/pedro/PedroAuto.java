@@ -1,0 +1,212 @@
+package org.firstinspires.ftc.teamcode.pedro;
+
+import com.pedropathing.follower.Follower;
+import com.pedropathing.paths.CompoundPath;
+import com.pedropathing.paths.AtomicPath;
+import com.pedropathing.paths.interpolator.PiecewiseInterpolator;
+import com.pedropathing.paths.Path;
+import com.pedropathing.paths.PathTracker;
+import com.pedropathing.math.Pose;
+import com.pedropathing.paths.curves.Line;
+import com.pedropathing.paths.curves.bezier.BezierCurve;
+import com.pedropathing.utils.Timer;
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.OpMode;
+import com.qualcomm.robotcore.hardware.Servo;
+
+import org.firstinspires.ftc.teamcode.pedro.Subsystems.ArmSubsystem;
+
+import java.util.concurrent.TimeUnit;
+
+@Autonomous(name="Test Pedro OP ANONYMOUS!!!")
+public class PedroAuto extends OpMode {
+
+    // variables
+    private String alliance;
+    private Follower follower;
+    private Servo shooter;
+    ArmSubsystem arm;
+    Timer pathTimer, opModeTimer;
+
+
+
+    // ‘Pose’ is a Pedro data type / Class (object)
+    // **1) define the Pose (a resting state)
+    private Pose startPose = new Pose(20, 120, Math.toRadians(140));
+    private Pose shootPose = new Pose(33, 108, Math.toRadians(140));
+    private Pose pickupPose = new Pose(24, 94, Math.toRadians(180));
+    private Pose stopPose = new Pose(45, 113, Math.toRadians(90));
+
+
+
+    // ‘enum’ is a data type in Java, somewhat similar to a list
+    // 'PathState' is the name of the enumeration
+    // 'path_state' is the name of the variable that can be assigned any item in the enumeration
+    // **2) add to the enumeration (the different states)
+    PathState path_state;
+    public enum PathState{
+        drive_start_to_shoot, shoot, drive_shoot_to_pickup, drive_pickup_to_stop
+    }
+
+
+
+    /*
+        Changing hardware here runs EVERY FRAME in loop()
+        Behavior: Sends the command repeatedly every loop cycle.
+        Best used for: Continuous updates, active monitoring,
+            or dynamic logic (e.g., PID target adjustments, sensor checks,
+            or setting state transitions).
+     */
+    // **3) the State Machine (set to next state)
+    public void statePathUpdate() {
+        switch(path_state) {
+            case drive_start_to_shoot:
+                // Transition when driving completes
+                if (!follower.isBusy()) {
+                    setPathState(PathState.shoot);
+                }
+                break;
+
+            case shoot:
+                telemetry.addLine("SHOOOTING!!!!!!!!!!!!!! RAGGHHHHH!!!!!!!!");
+                // Wait 5 seconds after reaching shoot pose before moving on
+                if (pathTimer.get(TimeUnit.SECONDS) > 5.0) {
+                    setPathState(PathState.drive_shoot_to_pickup);
+                }
+                break;
+
+            case drive_shoot_to_pickup:
+                // Transition when driving completes
+                if (!follower.isBusy()) {
+                    setPathState(PathState.drive_pickup_to_stop);
+                }
+                break;
+
+            case drive_pickup_to_stop:
+                if (!follower.isBusy()) {
+                    // Autonomous finished!
+                }
+                break;
+
+            default:
+                telemetry.addLine("No State Command. Ruh roh");
+                break;
+        }
+    }
+
+
+    /*
+        Changing other hardware here runs ONCE on transistion
+        Behavior: Sends one command to the hardware upon entry,
+            then lets the device run independently while loop() continues.
+        Best used for: One-time actions or triggering state initialization
+            (e.g., setting a motor power, launching a single movement, or starting a trajectory).
+     */
+    // **4) write code to build the PathChain (PathChain is a Pedro data type)
+    //      and control other hardware
+    public void setPathState(PathState newState) {
+        path_state = newState;
+        pathTimer.reset();
+
+        // Trigger path movement ONCE upon entering the state
+        switch(path_state) {
+            case drive_start_to_shoot:
+                follower.follow(follower.pathBuilder()
+                        .addPath(new Line(startPose, shootPose))
+                        .setLinearHeadingInterpolation(startPose.heading(), shootPose.heading())
+                        .build(), true);
+                break;
+            case drive_shoot_to_pickup:
+                follower.follow(follower.pathBuilder()
+                        .addPath(new Line(shootPose, pickupPose))
+                        .setLinearHeadingInterpolation(shootPose.heading(), pickupPose.heading())
+                        .build(), true);
+                break;
+            case drive_pickup_to_stop:
+                follower.follow(follower.pathBuilder()
+                        .addPath(new Line(pickupPose, stopPose))
+                        .setLinearHeadingInterpolation(pickupPose.heading(), stopPose.heading())
+                        .build(), true);
+                shooter.setPosition(0.0);
+                arm.lift(0.0);
+                break;
+            case shoot:
+                shooter.setPosition(0.5);
+                arm.lift(0.5);
+                break;
+        }
+    }
+
+
+
+    // helper function to flip alliance
+    private Pose flipPose(Pose orig){
+        double tempx = 144-orig.x();
+        double tempHeading = Math.PI - orig.heading();
+        return new Pose(tempx, orig.y(), tempHeading);
+    }
+
+
+
+
+
+    @Override
+    public void init() {
+        // get pot value, if something, set alliance to red
+        alliance = "blue"; // TODO change this to a conditional with pot value
+        if(alliance.equals("red")){
+            // **5) flip Pose for red alliance
+            startPose = flipPose(startPose);
+            shootPose = flipPose(shootPose);
+            pickupPose = flipPose(pickupPose);
+            stopPose = flipPose(stopPose);
+        }
+
+        pathTimer = new Timer();
+        opModeTimer = new Timer();
+
+        // ** initialize other hardware
+        shooter = hardwareMap.get(Servo.class, "shooter");
+        shooter.setDirection(Servo.Direction.FORWARD);
+        shooter.setPosition(0.0);
+        arm = new ArmSubsystem(hardwareMap);
+
+
+        // ** set the initial PathState and setup the Follower
+        path_state = PathState.drive_start_to_shoot;
+        follower = Constants.createFollower(hardwareMap);
+
+        // set the initial Pose
+        follower.setPose(startPose);
+    }
+
+
+
+    @Override
+    public void start() {
+        opModeTimer.reset();
+        // this triggers the first motion
+        setPathState(path_state);
+    }
+
+
+
+    @Override
+    public void loop() {
+        follower.update();
+        statePathUpdate();
+
+        telemetry.addData("path state", path_state.toString());
+        telemetry.addData("x", follower.pose().x());
+        telemetry.addData("y", follower.pose().y());
+        telemetry.addData("heading", Math.toDegrees(follower.pose().heading()));
+        telemetry.addData("path timer", pathTimer.get(TimeUnit.SECONDS));
+    }
+
+
+}
+
+
+
+
+
