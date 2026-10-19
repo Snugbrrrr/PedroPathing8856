@@ -16,7 +16,7 @@ public class DriveTrain {
     private DcMotor brm;
     private IMU imu;
 
-    static double speedLimit = 0.0;
+    static double speedLimit = 0.8;
     static double drive = 0;
     static double rotate = 0;
     static double strafe = 0;
@@ -57,15 +57,21 @@ public class DriveTrain {
 
     public void drive(Gamepad gamepad1){
         // Press Y to set ZERO ANGLE!
-        if (gamepad1.yWasPressed()) imu.resetYaw();
+        if (gamepad1.dpadUpWasPressed()) imu.resetYaw();
 
         // turbo/slow button, slowwwwwwwwwww fasttttttt
         // max
-        if (gamepad1.left_bumper) speedLimit = 1;
+        if (gamepad1.rightBumperWasPressed()){
+            if (speedLimit == 1.0) speedLimit = 0.8;
+            else speedLimit = 1.0;
+        }
         // min
-        else if (gamepad1.right_bumper) speedLimit = 0.2;
+        else if (gamepad1.leftBumperWasPressed()){
+            if (speedLimit == 0.4) speedLimit = 0.8;
+            else speedLimit = 0.4;
+
+        }
         // mid
-        else speedLimit = 0.6;
 
         // get the values from the controller
         if (Math.abs(gamepad1.left_stick_y) > .05) drive = -1 * gamepad1.left_stick_y;
